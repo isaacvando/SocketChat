@@ -23,6 +23,7 @@ common shared
         -Wno-unsafe
     build-depends: base ^>=4.16.4.0, network, split
     hs-source-dirs: .
+    default-extensions: OverloadedStrings
 
 executable Client
     import: shared

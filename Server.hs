@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+-- {-# LANGUAGE OverloadedStrings #-}
 import Network.Socket
 import Network.Socket.ByteString
 import Data.List.Split (splitOn)
