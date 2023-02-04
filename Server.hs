@@ -4,7 +4,11 @@ import Data.List.Split (splitOn)
 main :: IO ()
 main = do
   users <- parseUsers <$> readFile "users.txt"
-  print users
+  sock <- socket AF_INET Stream defaultProtocol
+  hostAddr:_ <- getAddrInfo Nothing (Just "127.0.0.1") Nothing
+  bind sock (addrAddress hostAddr)
+  print sock
+  close sock
 
 parseUsers :: String -> [(String, String)]
 parseUsers xs = map f (lines xs)
