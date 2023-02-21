@@ -10,7 +10,7 @@ main = do
   E.bracket getSock close (runServer server)
 
 runServer :: (Socket -> IO ()) -> Socket -> IO ()
-runServer server sock= do
+runServer server sock = do
   server sock
   runServer server sock
 
@@ -24,6 +24,7 @@ getSock :: IO Socket
 getSock = do
   sock <- socket AF_INET Stream defaultProtocol
   hostAddr:_ <- getAddrInfo Nothing (Just "127.0.0.1") (Just "10746")
+  setSocketOption sock ReuseAddr 1
   -- print $ addrAddress hostAddr
   bind sock (addrAddress hostAddr)
   listen sock 1
