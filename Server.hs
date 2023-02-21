@@ -25,7 +25,6 @@ getSock = do
   sock <- socket AF_INET Stream defaultProtocol
   hostAddr:_ <- getAddrInfo Nothing (Just "127.0.0.1") (Just "10746")
   setSocketOption sock ReuseAddr 1
-  -- print $ addrAddress hostAddr
   bind sock (addrAddress hostAddr)
   listen sock 1
   return sock
