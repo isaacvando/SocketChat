@@ -1,4 +1,3 @@
--- {-# LANGUAGE OverloadedStrings #-}
 import Network.Socket
 import Network.Socket.ByteString
 import Data.List.Split (splitOn)
@@ -15,9 +14,10 @@ main = do
 
 loop :: Socket -> IO ()
 loop sock = do
-  (sock', _) <- accept sock
-  send sock' "foobarbaz\n"
-  close sock'
+  (conn, _) <- accept sock
+  -- send conn "foobarbaz"
+  recv conn 4096 >>= print
+  close conn
   loop sock
 
 parseUsers :: String -> [(String, String)]

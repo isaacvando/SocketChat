@@ -21,7 +21,7 @@ common shared
         -Wno-missing-safe-haskell-mode
         --networking is unsafe
         -Wno-unsafe
-    build-depends: base ^>=4.16.4.0, network, split
+    build-depends: base ^>=4.16.4.0, network, split, bytestring
     hs-source-dirs: .
     default-extensions: OverloadedStrings
 
