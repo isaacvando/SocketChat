@@ -1,17 +1,18 @@
 import Network.Socket
 import Network.Socket.ByteString
 import Data.List.Split (splitOn)
+import qualified Control.Exception as E
 
 main :: IO ()
 main = do
   users <- parseUsers <$> readFile "users.txt"
-  sock <- getSock
-  runServer sock server
+  putStrLn "My chat room server. Version One."
+  E.bracket getSock close (runServer server)
 
-runServer :: Socket -> (Socket -> IO ()) -> IO ()
-runServer s server = do
-  server s
-  runServer s server
+runServer :: (Socket -> IO ()) -> Socket -> IO ()
+runServer server sock= do
+  server sock
+  runServer server sock
 
 server :: Socket -> IO ()
 server sock = do
@@ -27,15 +28,6 @@ getSock = do
   bind sock (addrAddress hostAddr)
   listen sock 1
   return sock
-
-
-loop :: Socket -> IO ()
-loop sock = do
-  (conn, _) <- accept sock
-  -- send conn "foobarbaz"
-  recv conn 4096 >>= print
-  close conn
-  loop sock
 
 parseUsers :: String -> [(String, String)]
 parseUsers xs = map f (lines xs)
