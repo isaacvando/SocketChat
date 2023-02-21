@@ -23,7 +23,7 @@ runClient = do
   input <- getLine
   let go = talk input >> runClient
   case words input of
-    ["logout"] -> return ()
+    ["logout"] -> talk input
     "send":_ -> go
     ["newuser", username, password] -> go
     ["login", username, password] -> go
