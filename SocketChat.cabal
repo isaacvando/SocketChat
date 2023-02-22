@@ -19,9 +19,10 @@ common shared
         -Wno-safe
         -Wno-implicit-prelude
         -Wno-missing-safe-haskell-mode
+        -Wno-missing-kind-signatures
         --networking is unsafe
         -Wno-unsafe
-    build-depends: base ^>=4.16.4.0, network, split, bytestring, utf8-string
+    build-depends: base ^>=4.16.4.0, network, split, bytestring, utf8-string, strict
     hs-source-dirs: .
     default-extensions: OverloadedStrings
 
