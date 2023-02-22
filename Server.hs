@@ -2,18 +2,17 @@ import Network.Socket
 import Network.Socket.ByteString (send, recv)
 import Data.List.Split (splitOn)
 import qualified Control.Exception as E
--- import Data.Maybe (isJust)
 import qualified Data.ByteString.UTF8 as U
 import System.IO.Strict as S (readFile)
 import Control.Monad (unless)
 
-data State = State { loggedIn :: Maybe String, users :: [(String,String)]}
+data State = State { loggedIn :: String, users :: [(String,String)]}
 
 main :: IO ()
 main = do
   users <- parseUsers <$> S.readFile "users.txt"
   putStrLn "My chat room server. Version One."
-  let state = State {loggedIn = Nothing, users = users}
+  let state = State {loggedIn = "", users = users}
   _ <- E.bracket getSock close (runServer server state)
   return ()
 
@@ -32,34 +31,32 @@ server state sock = do
   _ <- send conn (U.fromString resp)
   unless (null echo) $ putStrLn echo
   close conn
-  write $ renderUsers state'
+  writeFile "users.txt" $ renderUsers state'
   return state'
-  where
-    write xs =  writeFile "users.txt" xs
 
 
 process :: State -> String -> (State, String, String)
 process st msg = case (loggedIn st, words msg) of
-  (Just name, "send":xs) -> 
+  ("", "send":_) -> 
+    (st, "Denied. Please login first.", "")
+  (name, "send":xs) -> 
     let reply = name ++ ": " ++ unwords xs 
     in (st, reply, reply)
-  (Nothing, "send":_) -> 
-    (st, "Denied. Please login first.", "")
 
   (_, ["newuser", name, pass]) -> if (name, pass) `elem` users st 
     then (st, "Denied. User account already exists.", "")
     else (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
 
-  (Just name, "login":_) -> 
-    (st, "Denied. User " ++ name ++ " is already logged in.", "")
-  (Nothing, ["login", name, pass]) -> if (name,pass) `elem` (users st)
-    then (st {loggedIn = Just name}, "login confirmed", name ++ " login.")
+  ("", ["login", name, pass]) -> if (name,pass) `elem` users st
+    then (st {loggedIn = name}, "login confirmed", name ++ " login.")
     else (st, "Denied. User name or password incorrect.", "")
+  (name, "login":_) -> 
+    (st, "Denied. User " ++ name ++ " is already logged in.", "")
 
-  (Just name, ["logout"]) -> 
-    (st {loggedIn = Nothing}, name ++ " left.", name ++ " logout.")
-  (Nothing, ["logout"]) -> 
+  ("", ["logout"]) -> 
     (st, "No user to logout.", "")
+  (name, ["logout"]) -> 
+    (st {loggedIn = ""}, name ++ " left.", name ++ " logout.")
 
   (_, xs) -> (st, "\"" ++ unwords xs ++ "\" is not a valid command.", "")
 
@@ -87,3 +84,4 @@ parseUsers xs = map f (lines xs)
       where
         trimmed = (init . tail) x 
         splits = splitOn ", " trimmed
+
