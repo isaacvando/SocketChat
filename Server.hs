@@ -1,4 +1,17 @@
 import Network.Socket
+    ( getAddrInfo,
+      setSocketOption,
+      accept,
+      bind,
+      listen,
+      socket,
+      close,
+      defaultProtocol,
+      AddrInfo(addrAddress),
+      SocketOption(ReuseAddr),
+      Family(AF_INET),
+      Socket,
+      SocketType(Stream) )
 import Network.Socket.ByteString (send, recv)
 import Data.List.Split (splitOn)
 import qualified Control.Exception as E
@@ -6,21 +19,19 @@ import qualified Data.ByteString.UTF8 as U
 import System.IO.Strict as S (readFile)
 import Control.Monad (unless)
 
+
 data State = State { loggedIn :: String, users :: [(String,String)]}
+
 
 main :: IO ()
 main = do
   users <- parseUsers <$> S.readFile "users.txt"
   putStrLn "My chat room server. Version One."
   let state = State {loggedIn = "", users = users}
-  _ <- E.bracket getSock close (runServer server state)
+  _ <- E.bracket getSock close (runServer state)
   return ()
-
-
-runServer :: (State -> Socket -> IO State) -> State -> Socket -> IO State
-runServer server state sock = do
-  state' <- server state sock
-  runServer server state' sock
+  where
+    runServer st sock = server st sock >>= (`runServer` sock)
 
 
 server :: State -> Socket -> IO State
@@ -84,4 +95,3 @@ parseUsers xs = map f (lines xs)
       where
         trimmed = (init . tail) x 
         splits = splitOn ", " trimmed
-

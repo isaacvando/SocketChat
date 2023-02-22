@@ -10,7 +10,6 @@ common shared
     default-language: Haskell2010
     ghc-options:
         -Weverything
-        -Wno-unused-packages
         -Wno-missing-local-signatures
         -Wno-all-missed-specialisations
         -Wno-incomplete-uni-patterns
@@ -20,9 +19,9 @@ common shared
         -Wno-implicit-prelude
         -Wno-missing-safe-haskell-mode
         -Wno-missing-kind-signatures
-        --networking is unsafe
+        -- networking is unsafe
         -Wno-unsafe
-    build-depends: base ^>=4.16.4.0, network, split, bytestring, utf8-string, strict
+    build-depends: base ^>=4.16.4.0, network, split, utf8-string, strict
     hs-source-dirs: .
     default-extensions: OverloadedStrings
 
