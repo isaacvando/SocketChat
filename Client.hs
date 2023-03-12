@@ -1,13 +1,13 @@
 import Network.Socket
-    ( getAddrInfo,
-      connect,
-      socket,
-      close,
-      defaultProtocol,
-      AddrInfo(addrAddress),
-      Family(AF_INET),
-      Socket,
-      SocketType(Stream) )
+    -- ( getAddrInfo,
+    --   connect,
+    --   socket,
+    --   close,
+    --   defaultProtocol,
+    --   AddrInfo(addrAddress),
+    --   Family(AF_INET),
+    --   Socket,
+    --   SocketType(Stream) )
 import Network.Socket.ByteString ( recv, send )
 import qualified Data.ByteString.UTF8 as U
 

@@ -22,6 +22,9 @@ import Control.Monad (unless)
 
 data State = State { loggedIn :: String, users :: [(String,String)]}
 
+maxClients :: Int
+maxClients = 3
+
 
 main :: IO ()
 main = do
@@ -36,7 +39,8 @@ main = do
 
 server :: State -> Socket -> IO State
 server state sock = do
-  (conn,_) <- accept sock
+  (conn,addr) <- accept sock
+  putStrLn $ "Addr is: " ++ show addr
   msg <- recv conn 4096
   let (state', resp, echo) = process state (U.toString msg)
   _ <- send conn (U.fromString resp)
