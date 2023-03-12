@@ -25,6 +25,8 @@ data State = State { loggedIn :: String, users :: [(String,String)]}
 maxClients :: Int
 maxClients = 3
 
+keyLength :: Int
+keyLength = 16
 
 main :: IO ()
 main = do
@@ -39,8 +41,7 @@ main = do
 
 server :: State -> Socket -> IO State
 server state sock = do
-  (conn,addr) <- accept sock
-  putStrLn $ "Addr is: " ++ show addr
+  (conn,_) <- accept sock
   msg <- recv conn 4096
   let (state', resp, echo) = process state (U.toString msg)
   _ <- send conn (U.fromString resp)
@@ -51,7 +52,7 @@ server state sock = do
 
 
 process :: State -> String -> (State, String, String)
-process st msg = case (loggedIn st, words msg) of
+process st msg = case (loggedIn st, (words . drop keyLength) msg) of
   ("", "send":_) -> 
     (st, "Denied. Please login first.", "")
   (name, "send":xs) -> 
