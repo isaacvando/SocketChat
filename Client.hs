@@ -2,16 +2,14 @@ import Network.Socket
 import Network.Socket.ByteString ( recv, send )
 import qualified Data.ByteString.UTF8 as U
 import Data.Text (unpack, pack)
-import Control.Concurrent.Async (race)
+import Control.Concurrent.Async (race_)
 
 
 main :: IO ()
 main = do
   putStrLn "My chat room client. Version One."
   sock <- getSock
-  race (sendMsg sock) (recvMsg sock)
-  return ()
-
+  race_ (sendMsg sock) (recvMsg sock)
 
 sendMsg :: Socket -> IO ()
 sendMsg sock = do

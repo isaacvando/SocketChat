@@ -30,8 +30,10 @@ common shared
         , text
         , containers
         , async
+        , stm
     hs-source-dirs: .
     default-extensions: OverloadedStrings
+        , RecordWildCards
 
 executable Client
     import: shared

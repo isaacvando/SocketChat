@@ -17,47 +17,66 @@ import Data.List.Split (splitOn)
 import qualified Control.Exception as E
 import qualified Data.ByteString.UTF8 as U
 import System.IO.Strict as S (readFile)
-import Control.Monad (unless)
+import Control.Monad 
 import Control.Concurrent
 import Control.Exception (SomeException)
 import qualified Data.Map as Map
+import Control.Concurrent.STM
 
 
-data State = State { 
-  loggedIn :: String
-  , users :: [(String,String)]
-  , conns :: [Socket]}
 
-maxClients :: Int
-maxClients = 3
+data Server = Server
+  {
+    clients :: TVar (Map.Map String Client)
+    , users :: TVar [(String,String)]
+  }
+
+data Client = Client
+  {
+    clientSocket :: Socket
+    , clientSendChan :: TChan String
+  }
+
+
 
 main :: IO ()
 main = do
-  users <- parseUsers <$> S.readFile "users.txt"
   putStrLn "My chat room server. Version One."
-  let state = State {loggedIn = "", users = users, conns = []}
-  _ <- E.bracket getSock close (runServer state)
-  return ()
-  where
-    runServer st sock = server st sock >>= (`runServer` sock)
+  listener <- getSock
+  server <- newServer
+  forever $ do
+    (conn,_) <- accept listener
+    forkFinally (talk server conn) (\_ -> close conn)
 
 
-server :: State -> Socket -> IO State
-server state sock = do
-  (conn,_) <- accept sock
-  -- let state' = state { conns = conn : conns state}
-  forkFinally (talk conn) (\_ -> close conn)
-  return state
+newServer :: IO Server
+newServer = do
+  clientTVar <- newTVarIO Map.empty
+  userList <- parseUsers <$> S.readFile "users.txt"
+  userTVar <- newTVarIO userList
+  return Server { clients = clientTVar, users = userTVar}
 
-talk :: Socket -> IO ()
-talk conn = do
-  msg <- recv conn 4096
-  send conn msg
-  let str = U.toString msg
-  putStrLn $ show conn ++ ": " ++ str
-  if str == "logout" || str == "" 
-    then return () 
-    else talk conn
+
+talk :: Server -> Socket -> IO ()
+talk server conn = do
+  msg <- U.toString <$> recv conn 4096
+  process server conn msg
+  talk server conn
+  -- let str = U.toString msg
+  -- putStrLn $ show conn ++ ": " ++ str
+  -- if str == "logout" || str == "" 
+  --   then return () 
+  --   else talk server conn
+
+process :: Server -> Socket -> String -> IO ()
+process server@Server{..} conn msg = case words msg of
+  ["login", user, pass] -> if (user,pass) `elem` users then addClient user conn
+  ["send", "all", x] -> broadcast server x
+  _ -> return ()
+
+
+broadcast :: Server -> String -> IO ()
+broadcast server msg = 
 
   
 
