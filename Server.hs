@@ -18,9 +18,14 @@ import qualified Control.Exception as E
 import qualified Data.ByteString.UTF8 as U
 import System.IO.Strict as S (readFile)
 import Control.Monad (unless)
+import Control.Concurrent
+import Control.Exception (SomeException)
 
 
-data State = State { loggedIn :: String, users :: [(String,String)]}
+data State = State { 
+  loggedIn :: String
+  , users :: [(String,String)]
+  , conns :: [Socket]}
 
 maxClients :: Int
 maxClients = 3
@@ -32,7 +37,7 @@ main :: IO ()
 main = do
   users <- parseUsers <$> S.readFile "users.txt"
   putStrLn "My chat room server. Version One."
-  let state = State {loggedIn = "", users = users}
+  let state = State {loggedIn = "", users = users, conns = []}
   _ <- E.bracket getSock close (runServer state)
   return ()
   where
@@ -42,13 +47,22 @@ main = do
 server :: State -> Socket -> IO State
 server state sock = do
   (conn,_) <- accept sock
+  -- let state' = state { conns = conn : conns state}
+  forkFinally (talk conn) (\_ -> close conn)
+  return state
+
+talk :: Socket -> IO ()
+talk conn = do
   msg <- recv conn 4096
-  let (state', resp, echo) = process state (U.toString msg)
-  _ <- send conn (U.fromString resp)
-  unless (null echo) $ putStrLn echo
-  close conn
-  writeFile "users.txt" $ renderUsers state'
-  return state'
+  send conn msg
+  let str = U.toString msg
+  putStrLn $ show conn ++ ": " ++ str
+  if str == "logout" || str == "" 
+    then return () 
+    else talk conn
+
+  
+
 
 
 process :: State -> String -> (State, String, String)
@@ -100,3 +114,17 @@ parseUsers xs = map f (lines xs)
       where
         trimmed = (init . tail) x 
         splits = splitOn ", " trimmed
+
+
+  
+  
+  -- msg <- recv conn 4096
+  -- let (state', resp, echo) = process state (U.toString msg)
+  -- _ <- send conn (U.fromString resp)
+  -- unless (null echo) $ putStrLn echo
+  -- threadDelay 10000000
+  -- putStrLn "foobar my doggie"
+  -- _ <- send conn (U.fromString "part 2 baybe")
+  -- close conn
+  -- writeFile "users.txt" $ renderUsers state'
+  -- return state'
