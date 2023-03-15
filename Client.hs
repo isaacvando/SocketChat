@@ -1,36 +1,31 @@
 import Network.Socket
-    -- ( getAddrInfo,
-    --   connect,
-    --   socket,
-    --   close,
-    --   defaultProtocol,
-    --   AddrInfo(addrAddress),
-    --   Family(AF_INET),
-    --   Socket,
-    --   SocketType(Stream) )
 import Network.Socket.ByteString ( recv, send )
 import qualified Data.ByteString.UTF8 as U
-import Text.StringRandom (stringRandomIO)
 import Data.Text (unpack, pack)
-
-keyLength :: Int
-keyLength = 16
+import Control.Concurrent.Async (race)
 
 
 main :: IO ()
 main = do
-  key <- unpack <$> stringRandomIO (pack (".{" ++ show keyLength ++ "}"))
   putStrLn "My chat room client. Version One."
   sock <- getSock
-  runClient sock
+  race (sendMsg sock) (recvMsg sock)
+  return ()
 
 
-runClient :: Socket-> IO ()
-runClient sock = do
+sendMsg :: Socket -> IO ()
+sendMsg sock = do
   input <- getLine
   send sock (U.fromString input)
-  recv sock 4096 >>= (putStrLn . U.toString)
-  runClient sock 
+  sendMsg sock
+
+recvMsg :: Socket -> IO ()
+recvMsg sock = do
+  msg <- recv sock 4096 
+  putStrLn (U.toString msg)
+  recvMsg sock
+
+
 
 
 

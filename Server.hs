@@ -20,6 +20,7 @@ import System.IO.Strict as S (readFile)
 import Control.Monad (unless)
 import Control.Concurrent
 import Control.Exception (SomeException)
+import qualified Data.Map as Map
 
 
 data State = State { 
@@ -29,9 +30,6 @@ data State = State {
 
 maxClients :: Int
 maxClients = 3
-
-keyLength :: Int
-keyLength = 16
 
 main :: IO ()
 main = do
@@ -65,36 +63,36 @@ talk conn = do
 
 
 
-process :: State -> String -> (State, String, String)
-process st msg = case (loggedIn st, (words . drop keyLength) msg) of
-  ("", "send":_) -> 
-    (st, "Denied. Please login first.", "")
-  (name, "send":xs) -> 
-    let reply = name ++ ": " ++ unwords xs 
-    in (st, reply, reply)
+-- process :: State -> String -> (State, String, String)
+-- process st msg = case (loggedIn st, (words . drop keyLength) msg) of
+--   ("", "send":_) -> 
+--     (st, "Denied. Please login first.", "")
+--   (name, "send":xs) -> 
+--     let reply = name ++ ": " ++ unwords xs 
+--     in (st, reply, reply)
 
-  (_, ["newuser", name, pass]) -> if (name, pass) `elem` users st 
-    then (st, "Denied. User account already exists.", "")
-    else (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
+--   (_, ["newuser", name, pass]) -> if (name, pass) `elem` users st 
+--     then (st, "Denied. User account already exists.", "")
+--     else (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
 
-  ("", ["login", name, pass]) -> if (name,pass) `elem` users st
-    then (st {loggedIn = name}, "login confirmed", name ++ " login.")
-    else (st, "Denied. User name or password incorrect.", "")
-  (name, "login":_) -> 
-    (st, "Denied. User " ++ name ++ " is already logged in.", "")
+--   ("", ["login", name, pass]) -> if (name,pass) `elem` users st
+--     then (st {loggedIn = name}, "login confirmed", name ++ " login.")
+--     else (st, "Denied. User name or password incorrect.", "")
+--   (name, "login":_) -> 
+--     (st, "Denied. User " ++ name ++ " is already logged in.", "")
 
-  ("", ["logout"]) -> 
-    (st, "No user to logout.", "")
-  (name, ["logout"]) -> 
-    (st {loggedIn = ""}, name ++ " left.", name ++ " logout.")
+--   ("", ["logout"]) -> 
+--     (st, "No user to logout.", "")
+--   (name, ["logout"]) -> 
+--     (st {loggedIn = ""}, name ++ " left.", name ++ " logout.")
 
-  (_, xs) -> (st, "\"" ++ unwords xs ++ "\" is not a valid command.", "")
+--   (_, xs) -> (st, "\"" ++ unwords xs ++ "\" is not a valid command.", "")
 
 
-renderUsers :: State -> String
-renderUsers = unlines . map go . users
-  where
-    go (name,pass) = "(" ++ name ++ ", " ++ pass ++ ")"
+-- renderUsers :: State -> String
+-- renderUsers = unlines . map go . users
+--   where
+--     go (name,pass) = "(" ++ name ++ ", " ++ pass ++ ")"
 
 
 getSock :: IO Socket

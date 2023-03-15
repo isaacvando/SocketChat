@@ -21,7 +21,15 @@ common shared
         -Wno-missing-kind-signatures
         -- networking is unsafe
         -Wno-unsafe
-    build-depends: base ^>=4.16.4.0, network, split, utf8-string, strict, string-random, text
+    build-depends: base ^>=4.16.4.0
+        , network
+        , split
+        , utf8-string
+        , strict
+        , string-random
+        , text
+        , containers
+        , async
     hs-source-dirs: .
     default-extensions: OverloadedStrings
 
