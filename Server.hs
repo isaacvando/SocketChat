@@ -72,22 +72,25 @@ runClient server@Server{..} conn = do
   atomically $ writeTVar clientsTVar (Map.insert user client clients)
   putStrLn $ user ++ " login."
   forever $ do
-    race_ (listenToClient client) (listenToChannel client)
+    race_ (listenToClient server client) (listenToChannel client)
   where
-    listenToClient client@Client{..} = forever $ do
-      msg <- recvStr conn
-      atomically $ case words msg of
-        ["send","all", x] -> broadcast server x
-        ["send", name, x] -> do
-          clients <- readTVar clientsTVar
-          case Map.lookup name clients of
-            Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
-            Just c -> writeToChannel x c
-        _ -> writeToChannel msg client
-
     listenToChannel Client{..} = forever $ do
       msg <- atomically $ readTChan clientSendChan
       sendStr conn msg
+
+
+listenToClient :: Server -> Client -> IO ()
+listenToClient server@Server{..} client@Client{..} = forever $ do
+  msg <- recvStr clientSocket
+  atomically $ case words msg of
+    ["send","all", x] -> broadcast server x
+    ["send", name, x] -> do
+      clients <- readTVar clientsTVar
+      case Map.lookup name clients of
+        Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
+        Just c -> writeToChannel x c
+    _ -> writeToChannel msg client
+    
 
 writeToChannel :: String -> Client -> STM ()
 writeToChannel msg Client{..} = writeTChan clientSendChan msg
