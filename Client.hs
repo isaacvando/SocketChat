@@ -3,14 +3,16 @@ import Network.Socket.ByteString ( recv, send )
 import qualified Data.ByteString.UTF8 as U
 import Control.Concurrent.Async (race_)
 import Control.Monad
+import Control.Exception (bracket)
 
 
 main :: IO ()
 main = do
   putStrLn "My chat room client. Version Two."
-  sock <- getSock
-  race_ (sendMsg sock) (recvMsg sock)
-  close sock
+  bracket 
+    getSock 
+    (\s -> send s (U.fromString "logout") >> close s)
+    (\s -> race_ (sendMsg s) (recvMsg s))
 
 sendMsg :: Socket -> IO ()
 sendMsg sock = do
