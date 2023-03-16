@@ -78,6 +78,11 @@ runClient server@Server{..} conn = do
       msg <- recvStr conn
       atomically $ case words msg of
         ["send","all", x] -> broadcast server x
+        ["send", name, x] -> do
+          clients <- readTVar clientsTVar
+          case Map.lookup name clients of
+            Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
+            Just c -> writeToChannel x c
         _ -> writeToChannel msg client
 
     listenToChannel Client{..} = forever $ do
