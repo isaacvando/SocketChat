@@ -38,6 +38,11 @@ data Client = Client
     , clientSendChan :: TChan String
   }
 
+data Cmd = Broad String
+  | Uni String String
+  | ErrorResp String
+  | Who
+
 
 
 main :: IO ()
@@ -90,7 +95,7 @@ listenToClient server@Server{..} client@Client{..} = forever $ do
         Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
         Just c -> writeToChannel x c
     _ -> writeToChannel msg client
-    
+
 
 writeToChannel :: String -> Client -> STM ()
 writeToChannel msg Client{..} = writeTChan clientSendChan msg
