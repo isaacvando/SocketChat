@@ -27,8 +27,8 @@ import Control.Concurrent.STM
 
 data Server = Server
   {
-    clients :: TVar (Map.Map String Client)
-    , users :: TVar [(String,String)]
+    clientsTVar :: TVar (Map.Map String Client)
+    , usersTVar :: TVar [(String,String)]
   }
 
 data Client = Client
@@ -41,42 +41,95 @@ data Client = Client
 
 main :: IO ()
 main = do
-  putStrLn "My chat room server. Version One."
+  putStrLn "My chat room server. Version Two."
   listener <- getSock
   server <- newServer
   forever $ do
     (conn,_) <- accept listener
-    forkFinally (talk server conn) (\_ -> close conn)
+    forkFinally (runClient server conn) (\_ -> close conn)
 
 
 newServer :: IO Server
 newServer = do
-  clientTVar <- newTVarIO Map.empty
-  userList <- parseUsers <$> S.readFile "users.txt"
-  userTVar <- newTVarIO userList
-  return Server { clients = clientTVar, users = userTVar}
+  c <- newTVarIO Map.empty
+  users <- parseUsers <$> S.readFile "users.txt"
+  u <- newTVarIO users
+  return Server { clientsTVar = c, usersTVar = u}
 
 
-talk :: Server -> Socket -> IO ()
-talk server conn = do
-  msg <- U.toString <$> recv conn 4096
-  process server conn msg
-  talk server conn
+newClient :: Socket -> IO Client
+newClient conn = do
+  tchan <- newTChanIO
+  return Client {clientSocket = conn, clientSendChan = tchan}
+
+
+runClient :: Server -> Socket -> IO ()
+runClient server@Server{..} conn = do
+  client <- newClient conn
+  user <- login server conn
+  clients <- readTVarIO clientsTVar
+  atomically $ writeTVar clientsTVar (Map.insert user client clients)
+  putStrLn $ user ++ " login."
+  forever $ do
+    msg <- recv conn 4096
+    send conn msg
+
+
+login :: Server -> Socket -> IO String
+login server@Server{..} conn = do
+  msg <- recvStr conn
+  users <- readTVarIO usersTVar
+  case words msg of
+    ["login", user, pass] -> 
+      if (user, pass) `elem` users
+        then return user
+        else sendStr conn "Denied. User name or password incorrect." >> login server conn
+    _ -> sendStr conn "Denied. Please login first." >> login server conn
+
+
+recvStr :: Socket -> IO String
+recvStr conn = U.toString <$> recv conn 4096
+
+sendStr :: Socket -> String -> IO ()
+sendStr conn msg = void $ send conn (U.fromString msg)
+
+
+
+    -- sendToClient c (U.toString msg)
+  -- send conn (U.fromString msg)
+  -- broadcast
+
+-- sendToClient :: Client -> String -> IO ()
+-- sendToClient client msg = do
+
+
+
+
+
+
+
+  -- case words msg of
+  --   ["login", name, pass] -> 
+  --   xs -> send conn (U.fromString $ "\"" ++ unwords xs ++ "\" is not a valid command.") >> runClient server conn
+
+  
+
+
   -- let str = U.toString msg
   -- putStrLn $ show conn ++ ": " ++ str
   -- if str == "logout" || str == "" 
   --   then return () 
-  --   else talk server conn
+  --   else runClient server conn
 
-process :: Server -> Socket -> String -> IO ()
-process server@Server{..} conn msg = case words msg of
-  ["login", user, pass] -> if (user,pass) `elem` users then addClient user conn
-  ["send", "all", x] -> broadcast server x
-  _ -> return ()
+-- process :: Server -> Socket -> String -> IO ()
+-- process server@Server{..} conn msg = case words msg of
+--   ["login", user, pass] -> if (user,pass) `elem` users then addClient user conn
+--   ["send", "all", x] -> broadcast server x
+--   _ -> return ()
 
 
-broadcast :: Server -> String -> IO ()
-broadcast server msg = 
+-- broadcast :: Server -> String -> IO ()
+-- broadcast server msg = 
 
   
 

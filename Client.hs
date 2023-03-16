@@ -1,13 +1,13 @@
 import Network.Socket
 import Network.Socket.ByteString ( recv, send )
 import qualified Data.ByteString.UTF8 as U
-import Data.Text (unpack, pack)
 import Control.Concurrent.Async (race_)
+import Control.Monad
 
 
 main :: IO ()
 main = do
-  putStrLn "My chat room client. Version One."
+  putStrLn "My chat room client. Version Two."
   sock <- getSock
   race_ (sendMsg sock) (recvMsg sock)
 
@@ -19,8 +19,9 @@ sendMsg sock = do
 
 recvMsg :: Socket -> IO ()
 recvMsg sock = do
-  msg <- recv sock 4096 
-  putStrLn (U.toString msg)
+  msg <- U.toString <$> recv sock 4096
+  -- unless (null msg) (putStrLn msg)
+  putStrLn msg
   recvMsg sock
 
 
