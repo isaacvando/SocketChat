@@ -74,13 +74,23 @@ runClient server@Server{..} conn = do
   forever $ do
     race_ (listenToClient client) (listenToChannel client)
   where
-    listenToClient Client{..} = forever $ do
+    listenToClient client@Client{..} = forever $ do
       msg <- recvStr conn
-      atomically $ writeTChan clientSendChan msg
+      atomically $ case words msg of
+        ["send","all", x] -> broadcast server x
+        _ -> writeToChannel msg client
 
     listenToChannel Client{..} = forever $ do
       msg <- atomically $ readTChan clientSendChan
       sendStr conn msg
+
+writeToChannel :: String -> Client -> STM ()
+writeToChannel msg Client{..} = writeTChan clientSendChan msg
+
+broadcast :: Server -> String -> STM ()
+broadcast Server{..} msg = do
+  clients <- readTVar clientsTVar
+  mapM_ (writeToChannel msg) (Map.elems clients)
 
 
 login :: Server -> Socket -> IO String
