@@ -22,6 +22,7 @@ import Control.Concurrent
 import Control.Exception (SomeException)
 import qualified Data.Map as Map
 import Control.Concurrent.STM
+import Control.Concurrent.Async
 
 
 
@@ -71,8 +72,15 @@ runClient server@Server{..} conn = do
   atomically $ writeTVar clientsTVar (Map.insert user client clients)
   putStrLn $ user ++ " login."
   forever $ do
-    msg <- recv conn 4096
-    send conn msg
+    race_ (listenToClient client) (listenToChannel client)
+  where
+    listenToClient Client{..} = forever $ do
+      msg <- recvStr conn
+      atomically $ writeTChan clientSendChan msg
+
+    listenToChannel Client{..} = forever $ do
+      msg <- atomically $ readTChan clientSendChan
+      sendStr conn msg
 
 
 login :: Server -> Socket -> IO String
