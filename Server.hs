@@ -15,16 +15,13 @@ import Network.Socket
 import Network.Socket.ByteString (send, recv)
 import Data.List
 import Data.List.Split (splitOn)
-import qualified Control.Exception as E
 import qualified Data.ByteString.UTF8 as U
 import System.IO.Strict as S (readFile)
 import Control.Monad 
 import Control.Concurrent
-import Control.Exception (SomeException)
 import qualified Data.Map.Strict as Map
 import Control.Concurrent.STM
 import Control.Concurrent.Async
-import System.Exit
 
 
 
@@ -38,12 +35,8 @@ data Client = Client
   {
     clientSocket :: Socket
     , clientSendChan :: TChan String
+    , clientName :: String
   }
-
-data Cmd = Broad String
-  | Uni String String
-  | ErrorResp String
-  | Who
 
 
 
@@ -65,16 +58,16 @@ newServer = do
   return Server { clientsTVar = c, usersTVar = u}
 
 
-newClient :: Socket -> IO Client
-newClient conn = do
+newClient :: Socket -> String -> IO Client
+newClient conn name = do
   tchan <- newTChanIO
-  return Client {clientSocket = conn, clientSendChan = tchan}
+  return Client {clientSocket = conn, clientSendChan = tchan, clientName = name}
 
 
 runClient :: Server -> Socket -> IO ()
 runClient server@Server{..} conn = do
-  client <- newClient conn
   user <- login server conn
+  client <- newClient conn user
   atomically $ modifyTVar' clientsTVar (Map.insert user client)
   putStrLn $ user ++ " login."
 
@@ -94,35 +87,28 @@ listenToClient server@Server{..} client@Client{..} = do
   if msg == "logout"
     then return ()
     else do
-      atomically $ case words msg of
-        ["send","all", x] -> broadcast server x
+      case words msg of
+        "send":"all":xs -> do
+          atomically $ broadcast server (unwords xs)
+          putStrLn $ clientName ++ ": " ++ unwords xs
 
-        ["send", name, x] -> do
+        "send":name:xs -> atomically $ do
           clients <- readTVar clientsTVar
           case Map.lookup name clients of
             Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
-            Just c -> writeToChannel x c
+            Just c -> writeToChannel (unwords xs) c
 
-        ["who"] -> do
+        ["who"] -> atomically $ do
           clients <- readTVar clientsTVar
           writeToChannel (intercalate ", " (Map.keys clients)) client
 
-        _ -> writeToChannel msg client
+        _ -> atomically $ writeToChannel msg client
       listenToClient server client
-
--- getCommand :: Server -> Client -> String -> Cmd
--- getCommand Server{..} Client{..} msg = case words msg of
---   ["send","all", x] -> Broad x
---   ["send", name, x] -> Uni 
---     clients <- readTVar clientsTVar
---     case Map.lookup name clients of
---       Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
---       Just c -> writeToChannel x c
---   _ -> writeToChannel msg client
 
 
 writeToChannel :: String -> Client -> STM ()
 writeToChannel msg Client{..} = writeTChan clientSendChan msg
+
 
 broadcast :: Server -> String -> STM ()
 broadcast Server{..} msg = do
@@ -145,81 +131,9 @@ login server@Server{..} conn = do
 recvStr :: Socket -> IO String
 recvStr conn = U.toString <$> recv conn 4096
 
+
 sendStr :: Socket -> String -> IO ()
 sendStr conn msg = void $ send conn (U.fromString msg)
-
-
-
-    -- sendToClient c (U.toString msg)
-  -- send conn (U.fromString msg)
-  -- broadcast
-
--- sendToClient :: Client -> String -> IO ()
--- sendToClient client msg = do
-
-
-
-
-
-
-
-  -- case words msg of
-  --   ["login", name, pass] -> 
-  --   xs -> send conn (U.fromString $ "\"" ++ unwords xs ++ "\" is not a valid command.") >> runClient server conn
-
-  
-
-
-  -- let str = U.toString msg
-  -- putStrLn $ show conn ++ ": " ++ str
-  -- if str == "logout" || str == "" 
-  --   then return () 
-  --   else runClient server conn
-
--- process :: Server -> Socket -> String -> IO ()
--- process server@Server{..} conn msg = case words msg of
---   ["login", user, pass] -> if (user,pass) `elem` users then addClient user conn
---   ["send", "all", x] -> broadcast server x
---   _ -> return ()
-
-
--- broadcast :: Server -> String -> IO ()
--- broadcast server msg = 
-
-  
-
-
-
--- process :: State -> String -> (State, String, String)
--- process st msg = case (loggedIn st, (words . drop keyLength) msg) of
---   ("", "send":_) -> 
---     (st, "Denied. Please login first.", "")
---   (name, "send":xs) -> 
---     let reply = name ++ ": " ++ unwords xs 
---     in (st, reply, reply)
-
---   (_, ["newuser", name, pass]) -> if (name, pass) `elem` users st 
---     then (st, "Denied. User account already exists.", "")
---     else (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
-
---   ("", ["login", name, pass]) -> if (name,pass) `elem` users st
---     then (st {loggedIn = name}, "login confirmed", name ++ " login.")
---     else (st, "Denied. User name or password incorrect.", "")
---   (name, "login":_) -> 
---     (st, "Denied. User " ++ name ++ " is already logged in.", "")
-
---   ("", ["logout"]) -> 
---     (st, "No user to logout.", "")
---   (name, ["logout"]) -> 
---     (st {loggedIn = ""}, name ++ " left.", name ++ " logout.")
-
---   (_, xs) -> (st, "\"" ++ unwords xs ++ "\" is not a valid command.", "")
-
-
--- renderUsers :: State -> String
--- renderUsers = unlines . map go . users
---   where
---     go (name,pass) = "(" ++ name ++ ", " ++ pass ++ ")"
 
 
 getSock :: IO Socket
@@ -239,17 +153,3 @@ parseUsers xs = map f (lines xs)
       where
         trimmed = (init . tail) x 
         splits = splitOn ", " trimmed
-
-
-  
-  
-  -- msg <- recv conn 4096
-  -- let (state', resp, echo) = process state (U.toString msg)
-  -- _ <- send conn (U.fromString resp)
-  -- unless (null echo) $ putStrLn echo
-  -- threadDelay 10000000
-  -- putStrLn "foobar my doggie"
-  -- _ <- send conn (U.fromString "part 2 baybe")
-  -- close conn
-  -- writeFile "users.txt" $ renderUsers state'
-  -- return state'
