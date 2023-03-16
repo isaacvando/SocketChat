@@ -13,6 +13,7 @@ import Network.Socket
       Socket,
       SocketType(Stream) )
 import Network.Socket.ByteString (send, recv)
+import Data.List
 import Data.List.Split (splitOn)
 import qualified Control.Exception as E
 import qualified Data.ByteString.UTF8 as U
@@ -20,7 +21,7 @@ import System.IO.Strict as S (readFile)
 import Control.Monad 
 import Control.Concurrent
 import Control.Exception (SomeException)
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import Control.Concurrent.STM
 import Control.Concurrent.Async
 
@@ -73,11 +74,16 @@ runClient :: Server -> Socket -> IO ()
 runClient server@Server{..} conn = do
   client <- newClient conn
   user <- login server conn
-  clients <- readTVarIO clientsTVar
-  atomically $ writeTVar clientsTVar (Map.insert user client clients)
+  atomically $ do
+    clients <- readTVar clientsTVar
+    writeTVar clientsTVar (Map.insert user client clients)
   putStrLn $ user ++ " login."
-  forever $ do
-    race_ (listenToClient server client) (listenToChannel client)
+  race_ (listenToClient server client) (listenToChannel client)
+  atomically $ do
+    clients <- readTVar clientsTVar
+    writeTVar clientsTVar (Map.delete user clients)
+  putStrLn $ user ++ " logout."
+  close conn
   where
     listenToChannel Client{..} = forever $ do
       msg <- atomically $ readTChan clientSendChan
@@ -87,14 +93,33 @@ runClient server@Server{..} conn = do
 listenToClient :: Server -> Client -> IO ()
 listenToClient server@Server{..} client@Client{..} = forever $ do
   msg <- recvStr clientSocket
+  -- cmd <- getCommand server client msg
+  -- runCmd cmd
   atomically $ case words msg of
     ["send","all", x] -> broadcast server x
+
     ["send", name, x] -> do
       clients <- readTVar clientsTVar
       case Map.lookup name clients of
         Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
         Just c -> writeToChannel x c
+
+    ["who"] -> do
+      clients <- readTVar clientsTVar
+      writeToChannel (intercalate ", " (Map.keys clients)) client
+
     _ -> writeToChannel msg client
+
+
+-- getCommand :: Server -> Client -> String -> Cmd
+-- getCommand Server{..} Client{..} msg = case words msg of
+--   ["send","all", x] -> Broad x
+--   ["send", name, x] -> Uni 
+--     clients <- readTVar clientsTVar
+--     case Map.lookup name clients of
+--       Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client
+--       Just c -> writeToChannel x c
+--   _ -> writeToChannel msg client
 
 
 writeToChannel :: String -> Client -> STM ()

@@ -10,12 +10,16 @@ main = do
   putStrLn "My chat room client. Version Two."
   sock <- getSock
   race_ (sendMsg sock) (recvMsg sock)
+  close sock
 
 sendMsg :: Socket -> IO ()
 sendMsg sock = do
   input <- getLine
-  send sock (U.fromString input)
-  sendMsg sock
+  if input == "logout"
+    then return ()
+    else do
+      send sock (U.fromString input)
+      sendMsg sock
 
 recvMsg :: Socket -> IO ()
 recvMsg sock = do
