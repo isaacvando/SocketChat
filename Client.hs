@@ -11,24 +11,29 @@ main = do
   bracket 
     getSock 
     (\s -> send s (U.fromString "logout") >> close s)
-    (\s -> race_ (sendMsg s) (recvMsg s))
+    (\s -> race_ (sendLoop s) (recvLoop s))
 
 
-sendMsg :: Socket -> IO ()
-sendMsg sock = do
+sendLoop :: Socket -> IO ()
+sendLoop sock = do
   input <- getLine
-  if input == "logout"
-    then return ()
-    else do
-      send sock (U.fromString input)
-      sendMsg sock
+  case words input of
+    ["logout"] -> return ()
+    "send":_ -> talk input
+    ["newuser", _, _] -> talk input
+    ["login", _, _] -> talk input
+    ["who"] -> talk input
+    _ -> putStrLn ("\"" ++ input ++ "\" is not a valid command.") >> sendLoop sock
+
+  where
+    talk s = send sock (U.fromString s) >> sendLoop sock
 
 
-recvMsg :: Socket -> IO ()
-recvMsg sock = do
+recvLoop :: Socket -> IO ()
+recvLoop sock = do
   msg <- U.toString <$> recv sock 4096
   putStrLn msg
-  recvMsg sock
+  recvLoop sock
 
 
 getSock :: IO Socket

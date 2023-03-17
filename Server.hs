@@ -78,11 +78,17 @@ newClient conn name = do
 runClient :: Server -> Socket -> IO ()
 runClient server@Server{..} conn = do
   client@Client{..} <- login server conn
-  atomically $ modifyTVar' clientsTVar (Map.insert clientName client)
+
+  atomically $ do
+    modifyTVar' clientsTVar (Map.insert clientName client)
+    broadcast server $ clientName ++ "joins."
   putStrLn $ clientName ++ " login."
 
   race_ (listenToClient server client) (listenToChannel client)
-  atomically $ modifyTVar' clientsTVar (Map.delete clientName)
+
+  atomically $ do
+    modifyTVar' clientsTVar (Map.delete clientName)
+    broadcast server $ clientName ++ "left."
   putStrLn $ clientName ++ " logout."
   
   where
@@ -108,14 +114,14 @@ listenToClient server@Server{..} client@Client{..} = do
             clients <- readTVar clientsTVar
             case Map.lookup name clients of
               Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client >> return False
-              Just c -> writeToChannel (unwords xs) c >> return True
+              Just c -> writeToChannel (clientName ++ ": " ++ unwords xs) c >> return True
           when ok (putStrLn $ clientName ++ " (to " ++ name ++ "): " ++ unwords xs)
 
         ["who"] -> atomically $ do
           clients <- readTVar clientsTVar
           writeToChannel (intercalate ", " (Map.keys clients)) client
 
-        _ -> atomically $ writeToChannel msg client
+        _ -> atomically $ writeToChannel ("\"" ++ msg ++ "\" is not allowed. Use 'send all', 'send', 'who', or 'logout'.") client
       listenToClient server client
 
 
@@ -126,7 +132,9 @@ writeToChannel msg Client{..} = writeTChan clientSendChan msg
 broadcast :: Server -> String -> STM ()
 broadcast Server{..} msg = do
   clients <- readTVar clientsTVar
-  mapM_ (writeToChannel msg) (Map.elems clients)
+  mapM_ (\writeToChannel msg) (Map.elems clients)
+  where
+    go Client{..}
 
 
 login :: Server -> Socket -> IO Client
@@ -140,7 +148,7 @@ login server@Server{..} conn = do
         users <- readTVar usersTVar
         return $ (user, pass) `elem` users
       if ok
-        then newClient conn user
+        then sendStr conn "login confirmed" >> newClient conn user
         else retry "Denied. User name or password incorrect."
 
 
