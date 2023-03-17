@@ -1,3 +1,9 @@
+-- Isaac Van Doren
+-- 3/16/23
+-- Multithreaded chat server
+
+
+
 import Network.Socket
     ( getAddrInfo,
       setSocketOption,
@@ -81,14 +87,14 @@ runClient server@Server{..} conn = do
 
   atomically $ do
     modifyTVar' clientsTVar (Map.insert clientName client)
-    broadcast server $ clientName ++ "joins."
+    broadcast server clientName (clientName ++ " joins.")
   putStrLn $ clientName ++ " login."
 
   race_ (listenToClient server client) (listenToChannel client)
 
   atomically $ do
     modifyTVar' clientsTVar (Map.delete clientName)
-    broadcast server $ clientName ++ "left."
+    broadcast server clientName (clientName ++ " left.")
   putStrLn $ clientName ++ " logout."
   
   where
@@ -106,7 +112,7 @@ listenToClient server@Server{..} client@Client{..} = do
       case words msg of
         "send":"all":xs -> do
           let msg = clientName ++ ": " ++ unwords xs
-          atomically $ broadcast server msg
+          atomically $ broadcast server clientName msg
           putStrLn msg
 
         "send":name:xs -> do
@@ -129,12 +135,14 @@ writeToChannel :: String -> Client -> STM ()
 writeToChannel msg Client{..} = writeTChan clientSendChan msg
 
 
-broadcast :: Server -> String -> STM ()
-broadcast Server{..} msg = do
+broadcast :: Server -> String -> String -> STM ()
+broadcast Server{..} from msg = do
   clients <- readTVar clientsTVar
-  mapM_ (\writeToChannel msg) (Map.elems clients)
+  mapM_ go (Map.elems clients)
   where
-    go Client{..}
+    go c@Client{..} = if clientName == from
+      then return ()
+      else writeToChannel msg c
 
 
 login :: Server -> Socket -> IO Client
@@ -152,26 +160,18 @@ login server@Server{..} conn = do
         else retry "Denied. User name or password incorrect."
 
 
-    ["newuser", user, pass] 
-      | length user < 3 || length user > 32 
-        -> retry "Username must be between 3 and 32 characters long"
-
-      | length pass < 4 || length pass > 8 
-        -> retry "Password must be between 4 and 8 characters long"
-
-      | otherwise 
-        -> do
-          taken <- atomically $ do
-            users <- readTVar usersTVar
-            if user `elem` map fst users
-              then return True
-              else writeTVar usersTVar ((user,pass):users) >> return False
-          if taken 
-            then 
-              retry $ "The username \"" ++ user ++ "\" is already taken."
-            else do
-              putStrLn "New user account created."
-              retry "New user account created. Please login."
+    ["newuser", user, pass] -> do
+      taken <- atomically $ do
+        users <- readTVar usersTVar
+        if user `elem` map fst users
+          then return True
+          else writeTVar usersTVar ((user,pass):users) >> return False
+      if taken 
+        then 
+          retry $ "The username \"" ++ user ++ "\" is already taken."
+        else do
+          putStrLn "New user account created."
+          retry "New user account created. Please login."
 
     _ -> retry "Denied. Please login first."
 
@@ -204,6 +204,7 @@ parseUsers xs = map f (lines xs)
       where
         trimmed = (init . tail) x 
         splits = splitOn ", " trimmed
+
 
 renderUsers :: [(String,String)] -> String
 renderUsers = unlines . map go

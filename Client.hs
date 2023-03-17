@@ -1,3 +1,8 @@
+-- Isaac Van Doren
+-- 3/16/23
+-- Multithreaded chat client
+
+
 import Network.Socket
 import Network.Socket.ByteString ( recv, send )
 import qualified Data.ByteString.UTF8 as U
@@ -19,14 +24,32 @@ sendLoop sock = do
   input <- getLine
   case words input of
     ["logout"] -> return ()
-    "send":_ -> talk input
-    ["newuser", _, _] -> talk input
+
+    "send":xs 
+      | length (unwords xs) > 256 || null (unwords xs)
+        -> retry "The message must be between 1 and 256 characters in length."
+      | otherwise
+        -> talk input
+
+
+    ["newuser", user, pass]
+      | length user < 3 || length user > 32 
+        -> retry "Username must be between 3 and 32 characters long"
+
+      | length pass < 4 || length pass > 8 
+        -> retry "Password must be between 4 and 8 characters long"
+
+      | otherwise 
+        -> talk input
+
     ["login", _, _] -> talk input
+
     ["who"] -> talk input
-    _ -> putStrLn ("\"" ++ input ++ "\" is not a valid command.") >> sendLoop sock
+    _ -> retry ("\"" ++ input ++ "\" is not a valid command.")
 
   where
     talk s = send sock (U.fromString s) >> sendLoop sock
+    retry msg = putStrLn msg >> sendLoop sock
 
 
 recvLoop :: Socket -> IO ()
