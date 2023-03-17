@@ -1,3 +1,9 @@
+-- Isaac Van Doren
+-- 3/16/23
+-- Multithreaded chat server
+
+
+
 import Network.Socket
     ( getAddrInfo,
       setSocketOption,
@@ -13,69 +19,172 @@ import Network.Socket
       Socket,
       SocketType(Stream) )
 import Network.Socket.ByteString (send, recv)
+import Data.List
 import Data.List.Split (splitOn)
-import qualified Control.Exception as E
 import qualified Data.ByteString.UTF8 as U
 import System.IO.Strict as S (readFile)
-import Control.Monad (unless)
+import Control.Monad 
+import Control.Concurrent
+import qualified Data.Map.Strict as Map
+import Control.Concurrent.STM
+import Control.Concurrent.Async
+import Control.Exception
 
 
-data State = State { loggedIn :: String, users :: [(String,String)]}
+
+data Server = Server
+  {
+    clientsTVar :: TVar (Map.Map String Client)
+    , usersTVar :: TVar [(String,String)]
+    , listener :: Socket
+  }
+
+data Client = Client
+  {
+    clientSocket :: Socket
+    , clientSendChan :: TChan String
+    , clientName :: String
+  }
+
 
 
 main :: IO ()
 main = do
+  putStrLn "My chat room server. Version Two."
+  bracket 
+    newServer 
+    finish
+    go
+
+  where 
+    go server@Server{..} = forever $ do
+      (conn,_) <- accept listener
+      forkFinally (runClient server conn) (\_ -> close conn)
+
+    finish Server{..} = do
+      users <- readTVarIO usersTVar
+      writeFile "users.txt" (renderUsers users)
+
+
+newServer :: IO Server
+newServer = do
+  c <- newTVarIO Map.empty
   users <- parseUsers <$> S.readFile "users.txt"
-  putStrLn "My chat room server. Version One."
-  let state = State {loggedIn = "", users = users}
-  _ <- E.bracket getSock close (runServer state)
-  return ()
+  u <- newTVarIO users
+  s <- getSock
+  return Server { clientsTVar = c, usersTVar = u, listener = s}
+
+
+newClient :: Socket -> String -> IO Client
+newClient conn name = do
+  tchan <- newTChanIO
+  return Client {clientSocket = conn, clientSendChan = tchan, clientName = name}
+
+
+runClient :: Server -> Socket -> IO ()
+runClient server@Server{..} conn = do
+  client@Client{..} <- login server conn
+
+  atomically $ do
+    modifyTVar' clientsTVar (Map.insert clientName client)
+    broadcast server clientName (clientName ++ " joins.")
+  putStrLn $ clientName ++ " login."
+
+  race_ (listenToClient server client) (listenToChannel client)
+
+  atomically $ do
+    modifyTVar' clientsTVar (Map.delete clientName)
+    broadcast server clientName (clientName ++ " left.")
+  putStrLn $ clientName ++ " logout."
+  
   where
-    runServer st sock = server st sock >>= (`runServer` sock)
+    listenToChannel Client{..} = forever $ do
+      msg <- atomically $ readTChan clientSendChan
+      sendStr conn msg
 
 
-server :: State -> Socket -> IO State
-server state sock = do
-  (conn,_) <- accept sock
-  msg <- recv conn 4096
-  let (state', resp, echo) = process state (U.toString msg)
-  _ <- send conn (U.fromString resp)
-  unless (null echo) $ putStrLn echo
-  close conn
-  writeFile "users.txt" $ renderUsers state'
-  return state'
+listenToClient :: Server -> Client -> IO ()
+listenToClient server@Server{..} client@Client{..} = do
+  msg <- recvStr clientSocket
+  if msg == "logout"
+    then return ()
+    else do
+      case words msg of
+        "send":"all":xs -> do
+          let msg = clientName ++ ": " ++ unwords xs
+          atomically $ broadcast server clientName msg
+          putStrLn msg
+
+        "send":name:xs -> do
+          ok <- atomically $ do
+            clients <- readTVar clientsTVar
+            case Map.lookup name clients of
+              Nothing -> writeToChannel ("No user " ++ name ++ " is logged in.") client >> return False
+              Just c -> writeToChannel (clientName ++ ": " ++ unwords xs) c >> return True
+          when ok (putStrLn $ clientName ++ " (to " ++ name ++ "): " ++ unwords xs)
+
+        ["who"] -> atomically $ do
+          clients <- readTVar clientsTVar
+          writeToChannel (intercalate ", " (Map.keys clients)) client
+
+        _ -> atomically $ writeToChannel ("\"" ++ msg ++ "\" is not allowed. Use 'send all', 'send', 'who', or 'logout'.") client
+      listenToClient server client
 
 
-process :: State -> String -> (State, String, String)
-process st msg = case (loggedIn st, words msg) of
-  ("", "send":_) -> 
-    (st, "Denied. Please login first.", "")
-  (name, "send":xs) -> 
-    let reply = name ++ ": " ++ unwords xs 
-    in (st, reply, reply)
-
-  (_, ["newuser", name, pass]) -> if (name, pass) `elem` users st 
-    then (st, "Denied. User account already exists.", "")
-    else (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
-
-  ("", ["login", name, pass]) -> if (name,pass) `elem` users st
-    then (st {loggedIn = name}, "login confirmed", name ++ " login.")
-    else (st, "Denied. User name or password incorrect.", "")
-  (name, "login":_) -> 
-    (st, "Denied. User " ++ name ++ " is already logged in.", "")
-
-  ("", ["logout"]) -> 
-    (st, "No user to logout.", "")
-  (name, ["logout"]) -> 
-    (st {loggedIn = ""}, name ++ " left.", name ++ " logout.")
-
-  (_, xs) -> (st, "\"" ++ unwords xs ++ "\" is not a valid command.", "")
+writeToChannel :: String -> Client -> STM ()
+writeToChannel msg Client{..} = writeTChan clientSendChan msg
 
 
-renderUsers :: State -> String
-renderUsers = unlines . map go . users
+broadcast :: Server -> String -> String -> STM ()
+broadcast Server{..} from msg = do
+  clients <- readTVar clientsTVar
+  mapM_ go (Map.elems clients)
   where
-    go (name,pass) = "(" ++ name ++ ", " ++ pass ++ ")"
+    go c@Client{..} = if clientName == from
+      then return ()
+      else writeToChannel msg c
+
+
+login :: Server -> Socket -> IO Client
+login server@Server{..} conn = do
+  msg <- recvStr conn
+
+
+  case words msg of
+    ["login", user, pass] -> do
+      ok <- atomically $ do
+        users <- readTVar usersTVar
+        return $ (user, pass) `elem` users
+      if ok
+        then sendStr conn "login confirmed" >> newClient conn user
+        else retry "Denied. User name or password incorrect."
+
+
+    ["newuser", user, pass] -> do
+      taken <- atomically $ do
+        users <- readTVar usersTVar
+        if user `elem` map fst users
+          then return True
+          else writeTVar usersTVar ((user,pass):users) >> return False
+      if taken 
+        then 
+          retry $ "The username \"" ++ user ++ "\" is already taken."
+        else do
+          putStrLn "New user account created."
+          retry "New user account created. Please login."
+
+    _ -> retry "Denied. Please login first."
+
+  where
+    retry msg = sendStr conn msg >> login server conn
+
+
+recvStr :: Socket -> IO String
+recvStr conn = U.toString <$> recv conn 4096
+
+
+sendStr :: Socket -> String -> IO ()
+sendStr conn msg = void $ send conn (U.fromString msg)
 
 
 getSock :: IO Socket
@@ -95,3 +204,9 @@ parseUsers xs = map f (lines xs)
       where
         trimmed = (init . tail) x 
         splits = splitOn ", " trimmed
+
+
+renderUsers :: [(String,String)] -> String
+renderUsers = unlines . map go
+  where
+    go (name,pass) = "(" ++ name ++ ", " ++ pass ++ ")"
