@@ -23,11 +23,32 @@ runClient = do
   input <- getLine
   let go = talk input >> runClient
   case words input of
-    ["logout"] -> talk input
-    "send":_ -> go
-    ["newuser", _, _] -> go
-    ["login", _, _] -> go
-    xs -> putStrLn ("\"" ++ unwords xs ++ "\" is not a valid command.") >> runClient
+    ["logout"] 
+      -> talk input
+
+    "send":xs 
+      | length (unwords xs) > 256 || null (unwords xs)
+        -> retry "The message must be between 1 and 256 characters in length."
+      | otherwise
+        -> go
+
+    ["newuser", user, pass]
+      | length user < 3 || length user > 32 
+        -> retry "Username must be between 3 and 32 characters long"
+
+      | length pass < 4 || length pass > 8 
+        -> retry "Password must be between 4 and 8 characters long"
+
+      | otherwise 
+        -> go
+
+    ["login", _, _] 
+      -> go
+
+    xs -> retry ("\"" ++ unwords xs ++ "\" is not a valid command.")
+  
+  where
+    retry s = putStrLn s >> runClient
 
 
 talk :: String -> IO ()

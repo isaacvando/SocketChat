@@ -54,9 +54,13 @@ process st msg = case (loggedIn st, words msg) of
     let reply = name ++ ": " ++ unwords xs 
     in (st, reply, reply)
 
-  (_, ["newuser", name, pass]) -> if (name, pass) `elem` users st 
-    then (st, "Denied. User account already exists.", "")
-    else (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
+  (logged, ["newuser", name, pass])
+    | (not . null) logged 
+      -> (st, "You cannot create a new user while logged in.", "")
+    | (name, pass) `elem` users st 
+      -> (st, "Denied. User account already exists.", "")
+    | otherwise
+      -> (st {users = (name, pass) : users st}, "New user account created. Please login.", "New user account created.")
 
   ("", ["login", name, pass]) -> if (name,pass) `elem` users st
     then (st {loggedIn = name}, "login confirmed", name ++ " login.")
